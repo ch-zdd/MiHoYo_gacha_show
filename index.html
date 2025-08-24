@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>米哈游抽卡可视化工具</title>
+    <link rel="icon" href="media/title.gif" type="image/gif">
+    <script src="./css/tailwind.css"></script>
+    <script src="./js/ajv.min.js"></script>
+    <style>
+        html, body {
+            height: 100%;
+            overflow: hidden; /* 防止body滚动 */
+        }
+        
+        /* 设置整个页面的背景图片 */
+        body {
+            background-image: url("media/bg.png");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
+        
+        .main-layout {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .header {
+            flex-shrink: 0;
+            z-index: 10;
+        }
+        
+        .content-area {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            flex-shrink: 0;
+            z-index: 5;
+            width: 25%
+        }
+        
+        .visualization-container {
+            flex: 1;
+            overflow-y: auto; /* 只有这个区域可以滚动 */
+            padding: 1rem;
+            width: 75%;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
+        }
+        .visualization-container::-webkit-scrollbar {
+            display: none;
+        }
+        
+        .visualization-area {
+            min-height: 60vh;
+            flex: 1;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
+        }
+        /* 隐藏 Webkit 浏览器的滚动条 */
+        .visualization-area::-webkit-scrollbar {
+            display: none;
+        }
+        
+        .visualization-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100%;
+            border: 2px dashed #e5e7eb;
+            border-radius: 0.5rem;
+        }
+        
+        /* 半透明背景样式 */
+        .semi-transparent {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(5px);
+        }
+        
+        /* 控制面板半透明样式 */
+        .panel-transparent {
+            background-color: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(3px);
+        }
+
+        /* selectGachaType 滚动区域 */
+        .scrollbar-hidden {
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
+        }
+        
+        /* 隐藏 Webkit 浏览器的滚动条 */
+        .scrollbar-hidden::-webkit-scrollbar {
+            display: none;
+        }
+
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="main-layout">        
+        <!-- 固定内容区域 -->
+        <div class="content-area">
+            <!-- 固定侧边栏 -->
+            <div class="sidebar p-4">
+                <div class="panel-transparent rounded-lg shadow-md p-6 h-full">
+                     <!-- 上半部分：控制面板 -->
+                    <div class="control-panel-section flex-1">
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">
+                            <img src="media/control-face.png" alt="face" class="w-10 h-10 mr-2 inline-block align-text-bottom">
+                            <span >控制面板</span>
+                        </h2>
+
+                        <!-- 导入文件按钮 -->
+                        <label for="fileInput" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md flex items-center cursor-pointer mb-4 w-fit inline-block">
+                            <i class="fa fa-file-import mr-2"></i>导入抽卡记录
+                        </label>
+                        <input type="file" id="fileInput" accept=".json" class="hidden">
+                        <!-- 导入结果 -->
+                        <div id="inputResult" class="text-black-500 italic mb-4">
+                            请导入一个JSON文件...
+                        </div>
+                    </div>
+
+                    <div class="reserved-section mt-6 pt-4 border-t border-gray-300 flex flex-col flex-grow">
+                        <h2 class="text-xl font-bold text-gray-800 mb-4 flex-shrink-0">
+                            <img src="media/gacha-type.png" alt="type" class="w-10 h-10 mr-2 inline-block align-text-bottom">
+                            <span>卡池类型</span>
+                        </h2>
+                        <div id="selectGachaType" class="flex flex-wrap item-center gap-2 overflow-y-auto scrollbar-hidden flex-grow"></div>  
+                        <div id="gachaStatistics" class="mt-4 pt-4 border-t border-gray-300 flex flex-wrap item-center gap-4 overflow-y-auto scrollbar-hidden flex-grow"></div>  
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 可滚动的可视化区域 -->
+            <div class="visualization-container">
+                <div class="semi-transparent rounded-lg shadow-md p-6 h-full flex flex-col">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex-shrink-0">
+                        <img id="gameAppIcon" src="media/title.gif" alt="Uknown" class="w-10 h-10 mr-2 inline-block align-text-bottom">
+                        <span id="gameAppName">数据可视化</span>
+                    </h2>
+                    
+                    <!-- 可视化展示区域 -->
+                    <div id="visualizationArea" class="visualization-area flex-1 overflow-y-auto">
+                        <div class="visualization-placeholder min-h-[300px]">
+                            <div class="text-center">
+                                <i class="fas fa-chart-line text-gray-300 text-5xl mb-4"></i>
+                                <p id="readResult" class="text-gray-500 text-lg">导入JSON数据后，可视化内容将在此显示</p>
+                                <p class="text-gray-400 mt-2">请在左侧导入抽卡记录JSON文件</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        G = {
+            // 选择的道具等级
+            selectRankType : "5",
+            // 选择的卡池类型
+            selectGachaType : null,
+            // 导入的游戏
+            selectGachaApp : null,
+            // 筛选的卡池数据
+            selectGachaData : null,
+            // 是否需要显示后缀，即"歪"
+            needShowSuffix : true,
+            // 常驻道具词典
+            changzhuDict : null,
+            // 选择的卡池最大抽卡次数
+            maxCount : 0,
+            // uigf版本
+            uigfVersion : ""
+        }
+
+        register_import_file_event();
+
+        // 工具函数：创建元素时同时设置class和内容
+        function createElementWithProps(tag, className, content) {
+            const element = document.createElement(tag);
+            // 添加class（支持多个class，用空格分隔）
+            if (className) element.className = className;
+            // 设置内容（支持文本或HTML）
+            if (content) {
+                // 如果是文本内容
+                if (typeof content === 'string') {
+                    element.textContent = content;
+                } 
+                // 如果是HTML内容
+                else if (content.html) {
+                    element.innerHTML = content.html;
+                }
+            }
+            return element;
+        }
+
+        // 1. 将时间字符串转换为Date对象
+        function parseTimeStr(timeStr) {
+            // 处理格式：将"2025-04-09 6:00:00"转换为Date可识别的格式
+            return new Date(timeStr.replace(' ', 'T')); 
+        }
+
+        function register_import_file_event(){
+            // 获取DOM元素
+            const fileInput = document.getElementById('fileInput');
+            const inputResult = document.getElementById('inputResult');
+            // 监听文件选择事件
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // 检查文件类型
+                if (!file.name.endsWith('.json')) {
+                    alert('请选择JSON格式的文件');
+                    fileInput.value = '';
+                    return;
+                }
+                
+                inputResult.innerHTML = "";
+                let content;
+                // 初始化AJV验证器
+                const ajv = new window.ajv7({strict: false});
+                try {
+                    // 读取文件内容
+                    content = await file.text();
+                    let uigfFormat = null;
+
+                    // 格式化JSON以便展示
+                    const jsonData = JSON.parse(content);
+                    if("version" in jsonData.info){
+                        const uigfFormatFile = await fetch("uigf/uigf-v4.1.json?" + new Date().getTime())
+                        uigfFormat = await uigfFormatFile.json();
+                        G.uigfVersion = "4.0+";
+                    }else if("uigf_version" in jsonData.info){
+                        const uigfFormatFile = await fetch("uigf/uigf-v3.0.json?" + new Date().getTime())
+                        uigfFormat = await uigfFormatFile.json();
+                        G.uigfVersion = "3.0";
+                    }else{
+                        inputResult.textContent = `不支持的uigf版本\n\n`;
+                        return;
+                    }
+
+                    const validate = ajv.compile(uigfFormat);
+                    const isValid = validate(jsonData);
+                    if (isValid) {
+                            parse_gacha_data(jsonData);
+                    } else {
+                        // 显示错误列表
+                        inputResult.innerHTML = '';
+                        validate.errors.forEach((error, index) => {
+                            const li = document.createElement('li');
+                            li.innerHTML = `<strong>#${index + 1}</strong> 路径: <code>${error.dataPath || 'root'}</code> - ${error.message}`;
+                            inputResult.appendChild(li);
+                        });
+                    }
+                    
+                    
+                } catch (e) {
+                    inputResult.textContent = `JSON解析错误：${e.message}\n\n`;
+                }
+            });
+            
+            // 允许重复选择同一文件
+            fileInput.addEventListener('click', () => {
+                fileInput.value = '';
+            });
+        }
+
+        async function parse_gacha_data(data) {
+            const readResult = document.getElementById('readResult');
+            const gameAppIcon = document.getElementById('gameAppIcon');
+            const gameApp = document.getElementById('gameAppName');
+            try{
+                const response = await fetch("config/non-special-role.json?" + new Date().getTime());
+                G.changzhuDict = await response.json();
+            } catch (e) {
+                readResult.textContent = `读取配置文件失败`;
+                return;
+            }
+
+            if(G.uigfVersion == "4.0+"){
+                if("hkrpg" in data){
+                    gameAppIcon.src = "./media/starrail.jpg";
+                    
+                    G.selectGachaData = data.hkrpg[0].list;
+                    G.selectGachaApp = "hkrpg";
+                    appStr = `崩坏：星穹铁道`;
+                    showGachaTypeButtonStarRail();
+                }else if("hk4e" in data){
+                    gameAppIcon.src = "./media/genshin.jpg";
+                    appStr = `原神`;
+                    G.selectGachaData = data.hk4e[0].list;
+                    G.selectGachaApp = "hk4e";
+                    showGachaTypeButtonGeshin();
+                }else if("nap" in data){
+                    gameAppIcon.src = "./media/zzz.jpg";
+                    appStr = `绝区零`;
+                    G.selectGachaData = data.nap[0].list;
+                    G.selectGachaApp = "nap";
+                    showGachaTypeButtonZZZ();
+                }else{
+                    G.selectGachaApp = null;
+                    G.selectGachaData = null;
+                    return;
+                }
+            }else{
+                //只有原神
+                gameAppIcon.src = "./media/genshin.jpg";
+                appStr = `原神`;
+                G.selectGachaData = data.list;
+                G.selectGachaApp = "hk4e";
+                showGachaTypeButtonGeshin();
+            }
+        
+
+            const periodStr = `${G.selectGachaData[0].time} ~ ${G.selectGachaData[G.selectGachaData.length - 1].time}`;
+            gameApp.textContent = `${appStr}-抽卡数据可视化 （${periodStr}）`;
+            // 创建按钮元素替代原来的文本
+
+            showGachaData();
+        }
+
+        function showGachaTypeButtonGeshin(){
+            selectRankType = "5";
+            G.selectGachaType = "301";
+            G.maxCount = 90;
+            G.needShowSuffix = true;
+            const selectGachaTypeDom = document.getElementById('selectGachaType');
+            selectGachaTypeDom.innerHTML = "";
+            const buttonClass = 'bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded whitespace-nowrap'
+            const buttonJuese = createElementWithProps("button", buttonClass, "角色祈愿");
+            const buttonWuqi = createElementWithProps("button", buttonClass, "武器祈愿");
+            const buttonChang = createElementWithProps("button", buttonClass, "常驻祈愿");
+            const buttonXin = createElementWithProps("button", buttonClass, "新手祈愿");
+            const buttonJilu = createElementWithProps("button", buttonClass, "集录祈愿");
+            buttonJuese.type = "button";
+            buttonWuqi.type = "button";
+            buttonChang.type = "button";
+            buttonXin.type = "button";
+            buttonJilu.type = "button";
+            buttonJuese.addEventListener('click', function() {
+                G.selectGachaType = "301"; // 或者400
+                G.maxCount = 90;
+                G.needShowSuffix = true;
+                showGachaData();
+            });
+            buttonWuqi.addEventListener('click', function() {
+                G.selectGachaType = "302";
+                G.maxCount = 80;
+                G.needShowSuffix = true;
+                showGachaData();
+            });
+            buttonChang.addEventListener('click', function() {
+                G.selectGachaType = "200";
+                G.maxCount = 90;
+                G.needShowSuffix = false;
+                showGachaData();
+            });
+            buttonXin.addEventListener('click', function() {
+                G.selectGachaType = "100";
+                G.maxCount = 20;
+                G.needShowSuffix = false;
+                showGachaData();
+            });
+            buttonJilu.addEventListener('click', function() {
+                G.selectGachaType = "500";
+                G.maxCount = 90;
+                G.needShowSuffix = false;
+                showGachaData();
+            });
+            selectGachaTypeDom.appendChild(buttonJuese);
+            selectGachaTypeDom.appendChild(buttonWuqi);
+            selectGachaTypeDom.appendChild(buttonChang);
+            selectGachaTypeDom.appendChild(buttonXin);
+            selectGachaTypeDom.appendChild(buttonJilu);
+        }
+
+        function showGachaTypeButtonZZZ(){
+            selectRankType = "4";
+            G.selectGachaType = "2";
+            G.maxCount = 90;
+            G.needShowSuffix = true;
+            const selectGachaTypeDom = document.getElementById('selectGachaType');
+            selectGachaTypeDom.innerHTML = "";
+            const buttonClass = 'bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded whitespace-nowrap'
+            const buttonJuese = createElementWithProps("button", buttonClass, "独家频段");
+            const buttonYin= createElementWithProps("button", buttonClass, "音擎频段");
+            const buttonChang = createElementWithProps("button", buttonClass, "常驻频段");
+            const buttonBang = createElementWithProps("button", buttonClass, "邦布频段");
+            buttonJuese.type = "button";
+            buttonYin.type = "button";
+            buttonChang.type = "button";
+            buttonBang.type = "button";
+            buttonJuese.addEventListener('click', function() {
+                G.selectGachaType = "2"; // 或者400
+                G.maxCount = 90;
+                G.needShowSuffix = true;
+                showGachaData();
+            });
+            buttonYin.addEventListener('click', function() {
+                G.selectGachaType = "3";
+                G.maxCount = 80;
+                G.needShowSuffix = true;
+                showGachaData();
+            });
+            buttonChang.addEventListener('click', function() {
+                G.selectGachaType = "1";
+                G.maxCount = 90;
+                G.needShowSuffix = false;
+                showGachaData();
+            });
+            buttonBang.addEventListener('click', function() {
+                G.selectGachaType = "5";
+                G.maxCount = 80;
+                G.needShowSuffix = false;
+                showGachaData();
+            });
+            selectGachaTypeDom.appendChild(buttonJuese);
+            selectGachaTypeDom.appendChild(buttonYin);
+            selectGachaTypeDom.appendChild(buttonChang);
+            selectGachaTypeDom.appendChild(buttonBang);
+        }
+
+        function showGachaTypeButtonStarRail(){
+            // 缺省值
+            selectRankType = "5";
+            G.selectGachaType = "11";
+            G.maxCount = 90;
+            G.needShowSuffix = true;
+            const selectGachaTypeDom = document.getElementById('selectGachaType');
+            selectGachaTypeDom.innerHTML = "";
+            const buttonClass = 'bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded whitespace-nowrap'
+            const buttonJuese = createElementWithProps("button", buttonClass, "角色跃迁");
+            const buttonGuang = createElementWithProps("button", buttonClass, "光锥跃迁");
+            const buttonChang = createElementWithProps("button", buttonClass, "常驻跃迁");
+            const buttonFJuese = createElementWithProps("button", buttonClass, "Fate角色");
+            const buttonFGuang = createElementWithProps("button", buttonClass, "Fate光锥");
+            buttonJuese.type = "button";
+            buttonGuang.type = "button";
+            buttonChang.type = "button";
+            buttonFJuese.type = "button";
+            buttonFGuang.type = "button";
+            buttonJuese.addEventListener('click', function() {
+                G.selectGachaType = "11";
+                G.maxCount = 90;
+                G.needShowSuffix = true;
+                showGachaData();
+            });
+            buttonGuang.addEventListener('click', function() {
+                G.selectGachaType = "12";
+                G.maxCount = 80;
+                G.needShowSuffix = true;
+                showGachaData();
+            });
+            buttonChang.addEventListener('click', function() {
+                G.selectGachaType = "1";
+                G.maxCount = 90;
+                G.needShowSuffix = false;
+                showGachaData();
+            });
+            buttonFJuese.addEventListener('click', function() {
+                G.selectGachaType = "21";
+                G.maxCount = 90;
+                G.needShowSuffix = true;
+                showGachaData();
+            });
+            buttonFGuang.addEventListener('click', function() {
+                G.selectGachaType = "22";
+                G.maxCount = 80;
+                G.needShowSuffix = true;
+                showGachaData();
+            });
+            selectGachaTypeDom.appendChild(buttonJuese);
+            selectGachaTypeDom.appendChild(buttonGuang);
+            selectGachaTypeDom.appendChild(buttonChang);
+            selectGachaTypeDom.appendChild(buttonFJuese);
+            selectGachaTypeDom.appendChild(buttonFGuang);
+        }
+
+        function showGachaData() {
+            selectList = G.selectGachaData.filter(item => {
+                if (G.selectGachaType == "301" || G.selectGachaType == "400"){
+                    return item.gacha_type == "301" || item.gacha_type == "400";
+                }else{
+                    return item.gacha_type == G.selectGachaType;
+                }
+                });
+            
+            // 小保底计数
+            let minGuaranteeCount = 0;
+            // 小保底歪了计数
+            let failGetCount = 0;
+            // 下次是否为小保底
+            let nextIsGuarantee = true;
+
+            const visualizationArea = document.getElementById('visualizationArea');
+            const gachaStatistics = document.getElementById('gachaStatistics');
+            // 清空可视化区域
+            visualizationArea.innerHTML = '';
+            gachaStatistics.innerHTML = '';
+            
+            const container = createElementWithProps("div", "space-y-4 pb-4", null);
+            let getTimeStr = null;
+            let count = 0;
+            const currentCount = selectList.length;
+            for (let i = 0; i < selectList.length; i++) {
+                const rankType = selectList[i].rank_type;
+                const name = selectList[i].name;
+                const getTime = parseTimeStr(selectList[i].time);
+                getTimeStr = getTime.toLocaleString();
+                let info = null;
+                
+                count++;
+                if(rankType != selectRankType){
+                    continue;
+                }
+                if(G.needShowSuffix){
+                    //计算保底的卡池
+                    //本次为保底，小保底次数加1
+                    if(nextIsGuarantee){
+                        minGuaranteeCount++;
+                    }
+                    //判断是否为常驻角色
+                    if(name in G.changzhuDict[G.selectGachaApp] && parseTimeStr(G.changzhuDict[G.selectGachaApp][name]) < getTime){
+                        info = "歪";
+
+                        // 本次常驻角色小保底歪了，下次为大保底，必定up
+                        nextIsGuarantee = false;
+                        failGetCount++;
+                    }else{
+                        info = null;
+                        // 不是常驻角色，下次为保底
+                        nextIsGuarantee = true;
+                    }
+                }else{
+                    info = null;
+                }
+                container.appendChild(drawSingle(`./media/${G.selectGachaApp}/${name}.png`, name, count, info, getTimeStr));
+                count = 0;
+            }
+            if(count >= 1){
+                container.appendChild(drawSingle(`./media/common.gif`, "已垫", count, "已垫", getTimeStr));
+            }
+
+            
+
+            visualizationArea.appendChild(container);
+
+            const statStyle = `font-bold text-white-500 text-lg flex items-center px-3 py-2 rounded-full bg-green-600 border-green-200 border`;
+            const allStat = createElementWithProps("div", statStyle, null);
+            const allTextNode = document.createTextNode(`累计总抽数：${G.selectGachaData.length}`);
+            allStat.appendChild(allTextNode);
+
+            const currentStat = createElementWithProps("div", statStyle, null);
+            const currentTextNode = document.createTextNode(`当前卡池累计抽数：${currentCount}`);
+            currentStat.appendChild(currentTextNode);
+
+            gachaStatistics.appendChild(allStat);
+            gachaStatistics.appendChild(currentStat);
+            if(G.needShowSuffix && minGuaranteeCount > 0){
+                const guaranteeStat = createElementWithProps("div", statStyle, null);
+                const guaranteeTextNode = document.createTextNode(`歪/小保底：${failGetCount}/${minGuaranteeCount}`);
+                guaranteeStat.appendChild(guaranteeTextNode);
+                const guaranteePercent = createElementWithProps("div", statStyle, null);
+                const gPercent = ((1-failGetCount/minGuaranteeCount)*100).toFixed(2);
+                const percentTextNode = document.createTextNode(`小保底不歪概率：${gPercent}%`);
+                guaranteePercent.appendChild(percentTextNode);
+                
+                gachaStatistics.appendChild(guaranteeStat);
+                gachaStatistics.appendChild(guaranteePercent);
+            }
+
+
+        }
+
+        function drawSingle(imageSrc, name, count, info, getTime){
+            const isHighCount = count > (G.maxCount/2);
+
+            const layer1 = createElementWithProps("div", 'flex items-center p-1 hover:bg-gray-50 rounded-lg transition-all duration-200 shadow-sm hover:shadow', null);
+            // 角色图片容器
+            const layer2_1 = createElementWithProps("div", 'character-image flex-shrink-0', null);
+            const img = document.createElement('img');
+            img.src = imageSrc;
+            //img.alt = name;
+            img.className = "w-10 h-10 object-cover transition-opacity duration-500 rounded-md";
+            layer2_1.appendChild(img);
+            layer1.appendChild(layer2_1);
+
+            // 中间进度条区域
+            const layer2_2 = createElementWithProps("div", 'ml-2 flex-1 max-w-md flex items-center gap-1', null);
+            const color = isHighCount ? 'red' : 'green';
+            const layer3_1 = createElementWithProps("div", `flex-1 h-5 max-w-[${count/G.maxCount*100}%] bg-${color}-500 rounded-md shadow-inner`, null);
+            const layer3_2 = createElementWithProps("div", 'text-gray-800 text-xs font-bold min-w-[30px] text-center', `${count}`);
+            
+            layer2_2.appendChild(layer3_1);
+            layer2_2.appendChild(layer3_2);
+            layer1.appendChild(layer2_2);
+    
+            //显示是否歪了
+            if(info != null){
+            // 根据count值确定颜色和文本
+                const colorClass = isHighCount ? 'text-red-500' : 'text-green-500';
+                const bgColorClass = isHighCount ? 'bg-red-100' : 'bg-green-100';
+                const borderColorClass = isHighCount ? 'border-red-200' : 'border-green-200';
+                
+                // 美化的信息显示
+                const layer2_3 = createElementWithProps("div", `font-bold ${colorClass} text-xs flex items-center px-1.5 py-0.5 rounded-full ${bgColorClass} ${borderColorClass} border`, null);
+                const textNode = document.createTextNode(info);
+                layer2_3.appendChild(textNode);
+                layer1.appendChild(layer2_3);
+            }
+
+            // 添加鼠标悬停事件显示获取时间
+            if(getTime) {
+                layer1.addEventListener('mouseenter', function(e) {
+                    // 创建提示框
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'absolute bg-gray-800 text-white text-xs rounded py-1 px-2 z-50';
+                    tooltip.textContent = `${name}: ${getTime}`;
+                    tooltip.style.left = (e.pageX + 10) + 'px';
+                    tooltip.style.top = (e.pageY - 20) + 'px';
+                    tooltip.id = 'time-tooltip';
+                    document.body.appendChild(tooltip);
+                });
+
+                layer1.addEventListener('mousemove', function(e) {
+                    const tooltip = document.getElementById('time-tooltip');
+                    if(tooltip) {
+                        tooltip.style.left = (e.pageX + 10) + 'px';
+                        tooltip.style.top = (e.pageY - 20) + 'px';
+                    }
+                });
+
+                layer1.addEventListener('mouseleave', function() {
+                    const tooltip = document.getElementById('time-tooltip');
+                    if(tooltip) {
+                        document.body.removeChild(tooltip);
+                    }
+                });
+            }
+
+            return layer1;
+        }
+    
+    </script>
+</body>
+</html>         
